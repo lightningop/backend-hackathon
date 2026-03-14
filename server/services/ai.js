@@ -1,8 +1,7 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-const truncate = (str, max = 500) => (str ? String(str).substring(0, max) : '');
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
 const generateTriageBrief = async (personData) => {
   const {
@@ -25,14 +24,14 @@ const generateTriageBrief = async (personData) => {
   const prompt = `You are a trauma-informed humanitarian triage specialist.
 
 PERSON PROFILE:
-- Name: ${truncate(firstName, 100)}
+- Name: ${firstName}
 - Case Type: ${caseType} — ${categoryContext[caseType]}
 - Age: ${age}
-- Origin: ${truncate(originCountry, 100) || 'Unknown'}
-- Languages: ${languages?.map(l => truncate(l, 50)).join(', ') || 'Unknown'}
+- Origin: ${originCountry || 'Unknown'}
+- Languages: ${languages?.join(', ') || 'Unknown'}
 ${caseType === 'IDP' ? `- Displacement cause: ${displacementCause}` : ''}
-${caseType !== 'IDP' ? `- Persecution grounds: ${truncate(persecutionGrounds, 200) || 'Not stated'}` : ''}
-${asylumNarrative ? `- Claim narrative: ${truncate(asylumNarrative, 500)}` : ''}
+${caseType !== 'IDP' ? `- Persecution grounds: ${persecutionGrounds || 'Not stated'}` : ''}
+${asylumNarrative ? `- Claim narrative: ${asylumNarrative}` : ''}
 
 PROTECTION FLAGS:
 - Medical Emergency: ${flags?.medicalEmergency ? 'YES' : 'No'}
@@ -48,17 +47,13 @@ Respond ONLY with a JSON object, no markdown, no extra text:
   "recommendedSteps": ["step 1", "step 2", "step 3"]
 }`;
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 500,
-    messages: [{ role: 'user', content: prompt }]
-  });
-
-  const text = message.content[0].text.trim();
-
   try {
-    return JSON.parse(text);
-  } catch {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (err) {
+    console.error('Gemini triage error:', err.message);
     return {
       priorityLevel: 'MEDIUM',
       summary: 'Triage assessment generated. Manual review recommended.',
@@ -68,4 +63,35 @@ Respond ONLY with a JSON object, no markdown, no extra text:
   }
 };
 
-module.exports = { generateTriageBrief };
+const translateAndSummarize = async (rawText) => {
+  const prompt = `The following text may be in any language.
+
+1. Detect the language
+2. Translate it fully to English
+3. Summarize the key asylum claim in 3-4 sentences
+
+Text: ${rawText}
+
+Respond ONLY with JSON, no markdown, no extra text:
+{
+  "detectedLanguage": "language name",
+  "translatedText": "full english translation",
+  "summary": "3-4 sentence summary of asylum claim"
+}`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (err) {
+    console.error('Gemini translate error:', err.message);
+    return {
+      detectedLanguage: 'Unknown',
+      translatedText: rawText,
+      summary: rawText
+    };
+  }
+};
+
+module.exports = { generateTriageBrief, translateAndSummarize };
