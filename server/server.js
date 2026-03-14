@@ -10,6 +10,7 @@ const personRoutes = require('./routes/persons');
 const caseRoutes = require('./routes/cases');
 const documentRoutes = require('./routes/documents');
 const triageRoutes = require('./routes/triage');
+const translateRoutes = require('./routes/translate');
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use('/api/persons', personRoutes);
 app.use('/api/cases', caseRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/triage', triageRoutes);
+app.use('/api/translate', translateRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
